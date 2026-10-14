@@ -19,6 +19,7 @@
   // Constants & tiny utilities
   // -------------------------------------------------------------------
   // Namespace for fictional demo repos when no HF_USERNAME is configured on the server.
+  // Demo mode never borrows the connected token's account name for fictional data.
   const DEMO_OWNER = 'demo-user';
   const HF = 'https://huggingface.co';
   const RECENT_DAYS = 30;
@@ -253,7 +254,8 @@
   Object.assign(S, { sort: viewPrefs.sort || S.sort, layout: viewPrefs.layout || S.layout });
   const savePrefs = () => safeStorage.set('hforg:prefs', { sort: S.sort, layout: S.layout, theme: document.documentElement.dataset.theme || 'light' });
 
-  const draftKey = () => (S.mode === 'demo' ? 'hforg:draft:demo' : `hforg:draft:${S.status?.user?.name || S.owner}`);
+  // Demo drafts are kept per namespace, so changing HF_USERNAME never overwrites another demo's staged work.
+  const draftKey = () => (S.mode === 'demo' ? `hforg:draft:demo:${S.owner}` : `hforg:draft:${S.status?.user?.name || S.owner}`);
 
   // -------------------------------------------------------------------
   // Collections: lookups, membership & plan
@@ -345,7 +347,7 @@
   function persistDraft() {
     const ops = computePlan();
     if (S.mode === 'demo') {
-      safeStorage.set('hforg:draft:demo', { v: 1, owner: S.owner, baseline: S.baseline, repos: S.repos, ops });
+      safeStorage.set(draftKey(), { v: 1, owner: S.owner, baseline: S.baseline, repos: S.repos, ops });
     } else if (S.mode === 'connected') {
       if (ops.length) safeStorage.set(draftKey(), { v: 1, ops, savedAt: Date.now() });
       else safeStorage.del(draftKey());
@@ -1236,11 +1238,12 @@
 
   function startDemo({ reset = false } = {}) {
     S.mode = 'demo';
-    S.owner = S.status?.owner || DEMO_OWNER;
+    // Only the configured HF_USERNAME, never the token's account: the namespace (and its saved
+    // draft) stays the same across connect, disconnect and server restarts.
+    S.owner = S.status?.configuredOwner || DEMO_OWNER;
     S.loadError = null;
     S.repoErrors = [];
-    let saved = reset ? null : safeStorage.get('hforg:draft:demo');
-    // Regenerate the demo if its data was built for a different username.
+    let saved = reset ? null : safeStorage.get(draftKey());
     if (saved && (!Array.isArray(saved.baseline) || !Array.isArray(saved.repos) || saved.owner !== S.owner)) saved = null;
     if (saved) {
       setRepos(saved.repos);
@@ -1256,7 +1259,7 @@
     S.selection.clear();
     if (S.view.kind === 'collection' && !colByKey(S.view.key)) S.view = { kind: 'all' };
     recompute();
-    if (reset) safeStorage.del('hforg:draft:demo');
+    if (reset) safeStorage.del(draftKey());
     persistDraft();
     renderAll();
     if (saved?.ops?.length) toast(`Restored ${plural(saved.ops.length, 'staged demo change')}`, 'info');
@@ -1305,10 +1308,7 @@
   async function boot() {
     const st = location.protocol === 'file:' ? null : await refreshStatus();
     if (st && st.connected) {
-      S.owner = st.owner || st.user?.name || null;
-      S.mode = 'connected';
-      renderChrome();
-      await loadConnected({ initial: true });
+      await switchToConnected();
     } else {
       startDemo();
       if (st && st.error) toast(`Configured token could not be used: ${st.error.message}`, 'error');
@@ -1376,7 +1376,6 @@
         const st2 = await api('/api/connect', { method: 'POST', body: { token } });
         $('#token', root).value = '';
         S.status = st2;
-        S.owner = st2.owner || st2.user?.name || null;
         m.close();
         await switchToConnected();
         toast(`Connected as ${st2.user.name}`, 'success');
@@ -1393,6 +1392,9 @@
 
   async function switchToConnected() {
     S.mode = 'connected';
+    // Every way into connected mode goes through here, so the demo placeholder can never leak
+    // into a real /api/repos request.
+    S.owner = S.status?.owner || S.status?.user?.name || null;
     S.view = { kind: 'all' };
     S.selection.clear();
     S.detailsKey = null;

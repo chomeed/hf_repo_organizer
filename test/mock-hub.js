@@ -2,7 +2,8 @@
  * Minimal in-memory imitation of the Hugging Face Hub endpoints used by
  * HF Organizer. Shapes follow huggingface_hub's client (Collection,
  * CollectionItem, Link-header pagination). Used by tests and for local UI
- * development: `node test/mock-hub.js` then `HF_ENDPOINT=http://127.0.0.1:7860`.
+ * development: `node test/mock-hub.js` then `HF_USERNAME= HF_ENDPOINT=http://127.0.0.1:7860 npm start`
+ * (its account is "test-user"; an empty HF_USERNAME makes the app use the token's account).
  */
 'use strict';
 const http = require('http');

@@ -84,6 +84,15 @@ test('connects and reports permissions without exposing the token', async () => 
   assert.strictEqual(data.user.name, 'test-user');
   assert.strictEqual(data.permissions.canWriteCollections, true);
   assert.strictEqual(data.owner, 'test-user', 'falls back to the token account when HF_USERNAME is unset');
+  assert.strictEqual(data.configuredOwner, null, 'demo mode must not borrow the token account');
+  process.env.HF_USERNAME = 'someone-else';
+  try {
+    const st = (await call('/api/status')).data;
+    assert.strictEqual(st.owner, 'someone-else', 'HF_USERNAME takes precedence over the token account');
+    assert.strictEqual(st.configuredOwner, 'someone-else');
+  } finally {
+    delete process.env.HF_USERNAME;
+  }
 });
 
 test('lists all repositories across pages, including private ones', async () => {

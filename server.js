@@ -301,6 +301,8 @@ function publicStatus() {
     tokenConfigured: !!auth.token,
     tokenSource: auth.source,
     owner: effectiveOwner(),
+    // HF_USERNAME alone (no token fallback): demo mode names its fictional repos after this.
+    configuredOwner: configuredOwner(),
     hfEndpoint: HF_ENDPOINT,
     user: w ? { name: w.name, fullname: w.fullname || w.name, avatarUrl: w.avatarUrl || null, type: w.type, orgs: (w.orgs || []).map((o) => o.name) } : null,
     permissions: w ? summarizePermissions(w) : null,

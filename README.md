@@ -35,7 +35,7 @@ besides the two front-end libraries, which also load from a CDN).
 
 ```bash
 npm install          # installs lucide + sortablejs (served locally if the CDN is blocked)
-cp .env.example .env # set HF_USERNAME (and optionally HF_TOKEN) here
+cp .env.example .env # optionally set HF_USERNAME and/or HF_TOKEN here
 npm start            # → http://localhost:5173
 ```
 
@@ -199,9 +199,11 @@ Notes and limits:
 ```bash
 npm test                         # proxy tests against the in-memory mock Hub
 node test/mock-hub.js            # run the mock Hub on :7860 (token printed on start)
-HF_ENDPOINT=http://127.0.0.1:7860 npm start
+HF_USERNAME= HF_ENDPOINT=http://127.0.0.1:7860 npm start   # empty HF_USERNAME overrides .env
 ```
 
+The mock Hub's account is `test-user`. Leaving `HF_USERNAME` empty, as above, makes the app use the
+token's account, so the mock's repositories show up even if your `.env` names your real account.
 The mock Hub copies the response shapes, pagination and error codes the app relies on. It lets you
 try the full connected flow, including failures (a collection titled `FAIL` can't be created), with
 no real account.
