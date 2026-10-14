@@ -21,12 +21,12 @@ const path = require('path');
 // Configuration
 // ---------------------------------------------------------------------------
 
-loadDotEnv(path.join(__dirname, '.env'));
+// Only the real server reads .env; tests that require() this module stay hermetic.
+if (require.main === module) loadDotEnv(path.join(__dirname, '.env'));
 
 const PORT = parseInt(process.env.PORT || '5173', 10);
 const HOST = process.env.HOST || '127.0.0.1';
 const HF_ENDPOINT = (process.env.HF_ENDPOINT || 'https://huggingface.co').replace(/\/+$/, '');
-const HF_USERNAME = process.env.HF_USERNAME || 'chomeed';
 const MAX_BODY = 64 * 1024;
 const PAGE_LIMIT = 100;
 
@@ -105,6 +105,7 @@ function readJsonBody(req) {
   });
 }
 
+const RE_USERNAME = /^[A-Za-z0-9][\w.-]{0,95}$/;
 const RE_REPO_ID = /^[A-Za-z0-9][\w.-]{0,95}\/[\w.-]{1,96}$/;
 const RE_SLUG = /^[A-Za-z0-9][\w.-]{0,95}\/[\w.-]{1,200}$/;
 const RE_OBJECT_ID = /^[a-f0-9]{24}$/i;
@@ -283,13 +284,23 @@ function summarizePermissions(who) {
   return result;
 }
 
+/** HF_USERNAME from the environment (read on each call), or null when unset. */
+function configuredOwner() {
+  return (process.env.HF_USERNAME || '').trim() || null;
+}
+
+/** Whose repositories to import: HF_USERNAME, else the connected token's account. */
+function effectiveOwner() {
+  return configuredOwner() || auth.whoami?.name || null;
+}
+
 function publicStatus() {
   const w = auth.whoami;
   return {
     connected: !!(auth.token && w),
     tokenConfigured: !!auth.token,
     tokenSource: auth.source,
-    owner: HF_USERNAME,
+    owner: effectiveOwner(),
     hfEndpoint: HF_ENDPOINT,
     user: w ? { name: w.name, fullname: w.fullname || w.name, avatarUrl: w.avatarUrl || null, type: w.type, orgs: (w.orgs || []).map((o) => o.name) } : null,
     permissions: w ? summarizePermissions(w) : null,
@@ -348,8 +359,9 @@ async function routeApi(req, res, url) {
   }
 
   if (p === '/api/repos' && m === 'GET') {
-    const author = url.searchParams.get('author') || HF_USERNAME;
-    if (!/^[A-Za-z0-9][\w.-]{0,95}$/.test(author)) throw new HttpError(400, 'Invalid author', 'bad_author');
+    const author = url.searchParams.get('author') || effectiveOwner();
+    if (!author) throw new HttpError(400, 'No Hugging Face username configured. Set HF_USERNAME in .env, or connect a token to import that account’s repositories.', 'no_owner');
+    if (!RE_USERNAME.test(author)) throw new HttpError(400, `“${author}” is not a valid Hugging Face username. Check HF_USERNAME in .env.`, 'bad_author');
     const common = { author, limit: PAGE_LIMIT };
     const specs = [
       ['model', '/api/models', ['author', 'private', 'downloads', 'likes', 'lastModified', 'createdAt', 'tags', 'pipeline_tag', 'library_name', 'gated']],
@@ -544,6 +556,9 @@ if (require.main === module) {
     } else {
       log('No HF_TOKEN set: open the app to use demo mode or connect with a token.');
     }
+    const owner = configuredOwner();
+    if (!owner) log('HF_USERNAME not set: the connected token\'s account will be used as the repositories owner.');
+    else if (!RE_USERNAME.test(owner)) log(`Warning: HF_USERNAME "${owner}" is not a valid Hugging Face username.`);
   });
 }
 

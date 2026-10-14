@@ -3,7 +3,8 @@
 Organize your Hugging Face repositories into **real Hugging Face Collections**, using
 drag-and-drop the way you would in Google Drive.
 
-- Imports every model, dataset and Space owned by **`chomeed`** (configurable), following pagination.
+- Imports every model, dataset and Space owned by the account set in **`HF_USERNAME`** (or, if that is empty,
+  the connected token's account), following pagination.
 - Imports your existing Collections (title, slug, description, visibility and full item lists).
 - Drag cards onto collections, multi-select (⌘/Ctrl-click, Shift-click, ⌘/Ctrl+A), bulk add and remove.
 - Every change is **staged locally** and undoable. Nothing touches Hugging Face until you review it in
@@ -31,7 +32,7 @@ besides the two front-end libraries, which also load from a CDN).
 
 ```bash
 npm install          # installs lucide + sortablejs (served locally if the CDN is blocked)
-cp .env.example .env # optional: set HF_TOKEN here
+cp .env.example .env # set HF_USERNAME (and optionally HF_TOKEN) here
 npm start            # → http://localhost:5173
 ```
 
@@ -44,10 +45,12 @@ token there or choose **Use demo mode**.
 ## Demo mode
 
 Demo mode starts automatically when the app isn't connected. It loads 46 **fictional**
-repositories, such as `chomeed/llama-finetune`, `chomeed/yolo-detection` and
-`chomeed/stable-diffusion-demo`, plus five sample collections (LLMs, Computer Vision, Audio, Datasets
+repositories, such as `<username>/llama-finetune`, `<username>/yolo-detection` and
+`<username>/stable-diffusion-demo`, plus five sample collections (LLMs, Computer Vision, Audio, Datasets
 and Experiments). A banner, the `Demo` pill and the details panel all say clearly that this data is
 not real.
+
+`<username>` is your `HF_USERNAME`, or `demo-user` if it isn't set or the server isn't running.
 
 Everything works in demo mode: search, filters, sorting, multi-select, drag-and-drop, creating, editing
 and deleting collections, undo, and the sync review. **Apply in demo** only marks changes as synced in
@@ -72,7 +75,7 @@ per-operation `403` error during sync.
 
 | Variable        | Default                  | Purpose |
 |-----------------|--------------------------|---------|
-| `HF_USERNAME`   | `chomeed`                | Account whose repositories are imported. |
+| `HF_USERNAME`   | –                        | Hugging Face username whose repositories are imported. If empty, the connected token's account is used. |
 | `HF_TOKEN`      | –                        | Optional access token. Otherwise use the connection screen. |
 | `HOST`          | `127.0.0.1`              | Bind address. Keep it local. |
 | `PORT`          | `5173`                   | HTTP port. |
@@ -80,7 +83,8 @@ per-operation `403` error during sync.
 | `ALLOWED_HOSTS` | –                        | Extra `Host` header values to accept (reverse-proxy setups). |
 
 Collections are read from, and created in, the namespace of the **token's user**. Repositories are
-listed for `HF_USERNAME`.
+listed for `HF_USERNAME`, or for the token's user when it is empty. No username is built into the
+code.
 
 ## Security model
 
@@ -158,7 +162,7 @@ Notes and limits:
 
 - **Items you don't own are preserved.** Papers, other users' repos and nested collections inside
   your collections are never removed. The collection view mentions them, for example "+1 item not
-  owned by chomeed".
+  owned by your-username".
 - **Descriptions** are limited to 150 characters by the Hub. The form enforces this.
 - **Not supported by this app:** reordering items, editing item notes, and collection themes. The
   API supports them, but they are outside this tool's scope and are left untouched. There are no

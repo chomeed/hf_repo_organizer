@@ -18,7 +18,8 @@
   // -------------------------------------------------------------------
   // Constants & tiny utilities
   // -------------------------------------------------------------------
-  const DEFAULT_OWNER = 'chomeed';
+  // Namespace for fictional demo repos when no HF_USERNAME is configured on the server.
+  const DEMO_OWNER = 'demo-user';
   const HF = 'https://huggingface.co';
   const RECENT_DAYS = 30;
   const UNDO_LIMIT = 100;
@@ -118,13 +119,13 @@
   // -------------------------------------------------------------------
   // Demo data (fictional)
   // -------------------------------------------------------------------
-  function buildDemo() {
+  function buildDemo(owner) {
     const day = 86400000;
     const now = Date.now();
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const R = (type, name, o = {}) => ({
-      type, id: `${DEFAULT_OWNER}/${name}`, name, author: DEFAULT_OWNER,
+      type, id: `${owner}/${name}`, name, author: owner,
       private: !!o.private,
       lastModified: new Date(now - (o.days ?? Math.floor(rnd() * 400)) * day - Math.floor(rnd() * day)).toISOString(),
       downloads: type === 'space' ? null : (o.dl ?? Math.floor(rnd() ** 3 * 40000)),
@@ -184,10 +185,10 @@
       R('space', 'gradio-sandbox', { sdk: 'gradio', tags: ['test'], private: true }),
       R('space', 'docs-chatbot', { sdk: 'docker', tags: ['rag', 'chat'] }),
     ];
-    const ids = (type, names) => names.map((n) => ({ type, id: `${DEFAULT_OWNER}/${n}`, objectId: null }));
+    const ids = (type, names) => names.map((n) => ({ type, id: `${owner}/${n}`, objectId: null }));
     const t0 = new Date(now - 3 * day).toISOString();
     const C = (title, desc, items, extra = {}) => ({
-      key: `${DEFAULT_OWNER}/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-demo${uid().slice(0, 6)}`,
+      key: demoSlug(owner, title),
       title, description: desc, private: false, lastUpdated: t0, items, ...extra,
     });
     const collections = [
@@ -216,6 +217,7 @@
     collections.forEach((c) => { c.slug = c.key; c.items.forEach((it) => { it.objectId = fakeObjectId(); }); });
     return { repos, collections };
   }
+  const demoSlug = (owner, title) => `${owner}/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-demo${uid().slice(0, 6)}`;
   function fakeObjectId() { let s = ''; for (let i = 0; i < 24; i++) s += '0123456789abcdef'[Math.floor(Math.random() * 16)]; return s; }
 
   // -------------------------------------------------------------------
@@ -225,7 +227,7 @@
     mode: 'loading', // 'demo' | 'connected'
     backend: false,
     status: null, // /api/status payload
-    owner: DEFAULT_OWNER,
+    owner: null, // repositories owner: HF_USERNAME, else the token's account, else DEMO_OWNER in demo mode
     repos: [],
     repoByKey: new Map(),
     repoErrors: [],
@@ -342,7 +344,7 @@
   function persistDraft() {
     const ops = computePlan();
     if (S.mode === 'demo') {
-      safeStorage.set('hforg:draft:demo', { v: 1, baseline: S.baseline, repos: S.repos, ops });
+      safeStorage.set('hforg:draft:demo', { v: 1, owner: S.owner, baseline: S.baseline, repos: S.repos, ops });
     } else if (S.mode === 'connected') {
       if (ops.length) safeStorage.set(draftKey(), { v: 1, ops, savedAt: Date.now() });
       else safeStorage.del(draftKey());
@@ -503,12 +505,13 @@
     const pill = $('#mode-pill');
     const banner = $('#mode-banner');
     const user = S.status?.user;
-    $('#owner-name').textContent = S.owner;
+    $('#owner-name').textContent = S.owner || '';
+    $('#user-chip').hidden = !S.owner || S.owner === DEMO_OWNER;
     if (S.mode === 'connected') {
       pill.textContent = 'Connected';
       pill.className = 'mode-pill connected';
       const av = $('#avatar');
-      av.textContent = (user?.name || S.owner)[0].toUpperCase();
+      av.textContent = (user?.name || S.owner || '?')[0].toUpperCase();
       if (user?.avatarUrl) {
         const url = user.avatarUrl.startsWith('http') ? user.avatarUrl : HF + user.avatarUrl;
         // The initial stays underneath and shows through if the image fails to load.
@@ -528,9 +531,9 @@
       pill.className = 'mode-pill';
       const av = $('#avatar');
       av.style.backgroundImage = '';
-      av.textContent = S.owner[0].toUpperCase();
+      av.textContent = (S.owner || '?')[0].toUpperCase();
       banner.className = 'mode-banner show';
-      banner.innerHTML = `${icon('flask-conical')}<span class="grow"><span class="banner-short"><strong>Demo mode</strong> — fictional sample data. Nothing is sent to Hugging Face.</span><span class="banner-long"><strong>Demo mode</strong> — these repositories and collections are <strong>fictional sample data</strong>, not real repositories of “${esc(S.owner)}”. Nothing is ever sent to Hugging Face.${S.backend ? '' : ' Start the local server (<code>npm start</code>) to connect your account.'}</span></span>${S.backend ? '<button class="btn btn-sm btn-primary" data-act="connect">Connect Hugging Face</button>' : ''}<button class="btn btn-sm" data-act="reset-demo" title="Reset demo data">Reset demo</button>`;
+      banner.innerHTML = `${icon('flask-conical')}<span class="grow"><span class="banner-short"><strong>Demo mode</strong> — fictional sample data. Nothing is sent to Hugging Face.</span><span class="banner-long"><strong>Demo mode</strong> — these repositories and collections are <strong>fictional sample data</strong>, not real repositories${S.owner && S.owner !== DEMO_OWNER ? ` of “${esc(S.owner)}”` : ''}. Nothing is ever sent to Hugging Face.${S.backend ? '' : ' Start the local server (<code>npm start</code>) to connect your account.'}</span></span>${S.backend ? '<button class="btn btn-sm btn-primary" data-act="connect">Connect Hugging Face</button>' : ''}<button class="btn btn-sm" data-act="reset-demo" title="Reset demo data">Reset demo</button>`;
     }
     $('#repo-total').textContent = S.loading ? 'Loading…' : plural(S.repos.length, 'repo');
     const foot = $('#sidebar-footer');
@@ -708,7 +711,7 @@
         state.innerHTML = `<div class="state-icon">${icon('folder-open')}</div><h2>This collection is empty</h2><p>Drag repositories onto it in the sidebar, or select some and use “Add to Collection”.</p><button class="btn" data-act="go-uncategorized">Browse uncategorized</button>`;
       } else {
         state.className = 'state';
-        state.innerHTML = `<div class="state-icon">${icon('inbox')}</div><h2>No repositories here</h2><p>${S.repos.length ? 'Nothing matches this view.' : `No repositories were found for “${esc(S.owner)}”.`}</p>`;
+        state.innerHTML = `<div class="state-icon">${icon('inbox')}</div><h2>No repositories here</h2><p>${S.repos.length ? 'Nothing matches this view.' : `No repositories were found for “${esc(S.owner || '')}”.`}</p>`;
       }
     } else {
       state.hidden = true;
@@ -1186,16 +1189,17 @@
 
   function startDemo({ reset = false } = {}) {
     S.mode = 'demo';
-    S.owner = DEFAULT_OWNER;
+    S.owner = S.status?.owner || DEMO_OWNER;
     S.loadError = null;
     S.repoErrors = [];
     let saved = reset ? null : safeStorage.get('hforg:draft:demo');
-    if (saved && (!Array.isArray(saved.baseline) || !Array.isArray(saved.repos))) saved = null;
+    // Regenerate the demo if its data was built for a different username.
+    if (saved && (!Array.isArray(saved.baseline) || !Array.isArray(saved.repos) || saved.owner !== S.owner)) saved = null;
     if (saved) {
       setRepos(saved.repos);
       S.baseline = saved.baseline;
     } else {
-      const demo = buildDemo();
+      const demo = buildDemo(S.owner);
       setRepos(demo.repos);
       S.baseline = demo.collections;
     }
@@ -1218,7 +1222,7 @@
     $('#btn-refresh').classList.add('spinning');
     try {
       const [reposRes, colsRes] = await Promise.all([
-        api(`/api/repos?author=${encodeURIComponent(S.owner)}`),
+        api(S.owner ? `/api/repos?author=${encodeURIComponent(S.owner)}` : '/api/repos'),
         api('/api/collections'),
       ]);
       setRepos(reposRes.repos);
@@ -1253,8 +1257,8 @@
 
   async function boot() {
     const st = location.protocol === 'file:' ? null : await refreshStatus();
-    if (st && st.owner) S.owner = st.owner;
     if (st && st.connected) {
+      S.owner = st.owner || st.user?.name || null;
       S.mode = 'connected';
       renderChrome();
       await loadConnected({ initial: true });
@@ -1297,7 +1301,7 @@
     if (st?.connected) return openAccountModal();
     const m = openModal({
       title: 'Connect to Hugging Face',
-      desc: `Import <strong>${esc(S.owner)}</strong>’s repositories and your real Hugging Face Collections.`,
+      desc: S.status?.owner ? `Import <strong>${esc(S.status.owner)}</strong>’s repositories and your real Hugging Face Collections.` : 'Import your repositories and your real Hugging Face Collections.',
       wide: true,
       body: `
         <ol class="connect-steps">
@@ -1325,7 +1329,7 @@
         const st2 = await api('/api/connect', { method: 'POST', body: { token } });
         $('#token', root).value = '';
         S.status = st2;
-        if (st2.owner) S.owner = st2.owner;
+        S.owner = st2.owner || st2.user?.name || null;
         m.close();
         await switchToConnected();
         toast(`Connected as ${st2.user.name}`, 'success');
@@ -1553,7 +1557,7 @@
     m.setFoot('<span class="grow">Applying locally…</span>');
     for (let i = 0; i < todo.length; i++) {
       const op = todo[i];
-      if (op.kind === 'create') keyMap.set(op.colKey, `${DEFAULT_OWNER}/${op.fields.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-demo${uid().slice(0, 6)}`);
+      if (op.kind === 'create') keyMap.set(op.colKey, demoSlug(S.owner, op.fields.title));
       op.status = 'ok';
       op.note = 'applied locally (demo)';
       if (i % 4 === 0) { renderProgress(body, ops, i + 1, todo.length, 'Applying in demo (nothing is sent)'); await sleep(30); }

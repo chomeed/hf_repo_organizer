@@ -11,6 +11,7 @@ test.before(async () => {
   const hubPort = await listen(hub.server);
   process.env.HF_ENDPOINT = `http://127.0.0.1:${hubPort}`;
   delete process.env.HF_TOKEN;
+  delete process.env.HF_USERNAME;
   ({ server: srv } = require('../server.js'));
   base = `http://127.0.0.1:${await listen(srv)}`;
 });
@@ -38,10 +39,30 @@ test('refuses non-local Host headers (DNS rebinding)', async () => {
   assert.strictEqual(status, 421);
 });
 
-test('status before connecting', async () => {
+test('status before connecting: no username is hardcoded', async () => {
   const { data } = await call('/api/status');
   assert.strictEqual(data.connected, false);
-  assert.strictEqual(data.owner, 'chomeed');
+  assert.strictEqual(data.owner, null);
+});
+
+test('listing repositories without any username explains how to configure one', async () => {
+  const { status, data } = await call('/api/repos');
+  assert.strictEqual(status, 400);
+  assert.strictEqual(data.error.code, 'no_owner');
+  assert.match(data.error.message, /HF_USERNAME/);
+});
+
+test('HF_USERNAME sets the owner and is validated', async () => {
+  process.env.HF_USERNAME = 'someone-else';
+  try {
+    assert.strictEqual((await call('/api/status')).data.owner, 'someone-else');
+    process.env.HF_USERNAME = 'not a valid name';
+    const bad = await call('/api/repos');
+    assert.strictEqual(bad.status, 400);
+    assert.strictEqual(bad.data.error.code, 'bad_author');
+  } finally {
+    delete process.env.HF_USERNAME;
+  }
 });
 
 test('collections require a token', async () => {
@@ -60,12 +81,14 @@ test('connects and reports permissions without exposing the token', async () => 
   const { status, data } = await call('/api/connect', { method: 'POST', body: { token: TOKEN } });
   assert.strictEqual(status, 200);
   assert.strictEqual(data.connected, true);
-  assert.strictEqual(data.user.name, 'chomeed');
+  assert.strictEqual(data.user.name, 'test-user');
   assert.strictEqual(data.permissions.canWriteCollections, true);
+  assert.strictEqual(data.owner, 'test-user', 'falls back to the token account when HF_USERNAME is unset');
 });
 
 test('lists all repositories across pages, including private ones', async () => {
-  const { data } = await call('/api/repos?author=chomeed');
+  const { data } = await call('/api/repos');
+  assert.strictEqual(data.author, 'test-user');
   const models = data.repos.filter((r) => r.type === 'model');
   assert.strictEqual(models.length, 150);
   assert.ok(models.some((r) => r.private));
@@ -84,12 +107,12 @@ test('collection lifecycle: create, update, add, duplicate add, remove, delete',
   const created = await call('/api/collections', { method: 'POST', body: { title: 'Vision', description: 'cv', private: true } });
   assert.strictEqual(created.status, 200);
   const slug = created.data.collection.slug;
-  assert.ok(slug.startsWith('chomeed/'));
+  assert.ok(slug.startsWith('test-user/'));
   const path = `/api/collections/${slug}`;
   assert.strictEqual((await call(path, { method: 'PATCH', body: { title: 'Computer Vision' } })).data.collection.title, 'Computer Vision');
-  assert.strictEqual((await call(`${path}/items`, { method: 'POST', body: { type: 'model', id: 'chomeed/model-005' } })).status, 200);
-  assert.strictEqual((await call(`${path}/items`, { method: 'POST', body: { type: 'model', id: 'chomeed/model-005' } })).status, 409);
-  const forb = await call(`${path}/items`, { method: 'POST', body: { type: 'model', id: 'chomeed/forbidden' } });
+  assert.strictEqual((await call(`${path}/items`, { method: 'POST', body: { type: 'model', id: 'test-user/model-005' } })).status, 200);
+  assert.strictEqual((await call(`${path}/items`, { method: 'POST', body: { type: 'model', id: 'test-user/model-005' } })).status, 409);
+  const forb = await call(`${path}/items`, { method: 'POST', body: { type: 'model', id: 'test-user/forbidden' } });
   assert.strictEqual(forb.status, 403);
   assert.match(forb.data.error.message, /permission/i);
   const full = (await call(path)).data.collection;

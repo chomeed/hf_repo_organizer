@@ -9,7 +9,7 @@ const http = require('http');
 const crypto = require('crypto');
 
 const TOKEN = 'hf_mocktoken1234567890abcdefghij';
-const USER = 'chomeed';
+const USER = 'test-user';
 
 function createMockHub({ models = 150 } = {}) {
   const oid = () => crypto.randomBytes(12).toString('hex');
@@ -42,12 +42,13 @@ function createMockHub({ models = 150 } = {}) {
       const p = url.pathname;
       if (p === '/api/whoami-v2') {
         if (!authed) return send(res, 401, { error: 'Invalid credentials in Authorization header' });
-        return send(res, 200, { name: USER, fullname: 'Cho Meed', avatarUrl: '/avatars/x.svg', type: 'user', orgs: [{ name: 'chomeed-org' }], auth: { accessToken: { displayName: 'organizer', role: 'fineGrained', fineGrained: { scoped: [{ entity: { type: 'user', name: USER }, permissions: ['repo.content.read', 'collection.read', 'collection.write'] }] } } } });
+        return send(res, 200, { name: USER, fullname: 'Test User', avatarUrl: '/avatars/x.svg', type: 'user', orgs: [{ name: 'test-org' }], auth: { accessToken: { displayName: 'organizer', role: 'fineGrained', fineGrained: { scoped: [{ entity: { type: 'user', name: USER }, permissions: ['repo.content.read', 'collection.read', 'collection.write'] }] } } } });
       }
       const lm = p.match(/^\/api\/(models|datasets|spaces)$/);
       if (lm && req.method === 'GET') {
         const type = lm[1].slice(0, -1);
-        const all = repos[type].filter((r) => authed || !r.private);
+        const author = url.searchParams.get('author');
+        const all = repos[type].filter((r) => (authed || !r.private) && (!author || r.id.startsWith(`${author}/`)));
         const limit = +url.searchParams.get('limit') || 1000;
         const offset = +url.searchParams.get('cursor') || 0;
         const page = all.slice(offset, offset + limit);
