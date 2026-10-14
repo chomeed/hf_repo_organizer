@@ -77,6 +77,10 @@
               <h1 id="view-title">All Repositories</h1>
               <span class="count-pill" id="view-count">0</span>
               <button class="icon-btn tiny" id="btn-view-menu" aria-label="Collection options" title="Collection options" hidden><span data-icon="more-horizontal"></span></button>
+              <div class="segmented membership-toggle" role="radiogroup" aria-label="Show repositories in or not in this collection" id="membership-toggle" hidden>
+                <button role="radio" data-value="in" aria-checked="true">In collection</button>
+                <button role="radio" data-value="out" aria-checked="false">Not in collection</button>
+              </div>
             </div>
             <p class="view-desc" id="view-desc"></p>
           </div>
@@ -91,6 +95,9 @@
               <button role="radio" data-value="dataset" aria-checked="false">Datasets</button>
               <button role="radio" data-value="space" aria-checked="false">Spaces</button>
             </div>
+            <select id="collection-filter" class="select" aria-label="Collection membership" title="Filter by collection membership">
+              <option value="any">Any collection</option>
+            </select>
             <select id="visibility-filter" class="select" aria-label="Visibility">
               <option value="all">All visibility</option>
               <option value="public">Public</option>

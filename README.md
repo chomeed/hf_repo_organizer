@@ -7,6 +7,9 @@ drag-and-drop the way you would in Google Drive.
   the connected token's account), following pagination.
 - Imports your existing Collections (title, slug, description, visibility and full item lists).
 - Drag cards onto collections, multi-select (⌘/Ctrl-click, Shift-click, ⌘/Ctrl+A), bulk add and remove.
+- Find what's missing: **Uncategorized** lists repos in no collection; each collection has an
+  **In collection / Not in collection** switch; and the toolbar's **Collection** filter (*Not in “X”*, *In “X”*,
+  *Not in any collection*) combines with search, type and visibility filters.
 - Every change is **staged locally** and undoable. Nothing touches Hugging Face until you review it in
   **Sync** and confirm.
 - Includes a fully working **demo mode** with clearly labelled fictional data.

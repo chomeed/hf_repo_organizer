@@ -238,6 +238,7 @@
     undo: [],
     view: { kind: 'all' },
     q: '', localQ: '', type: 'all', vis: 'all', sort: 'updated-desc', layout: 'grid',
+    colFilter: 'any', // 'any' | 'none' | 'in:<collectionKey>' | 'not:<collectionKey>'
     selection: new Set(),
     anchor: null,
     visible: [],
@@ -471,6 +472,28 @@
   }
   const isRecent = (r) => r.lastModified && Date.now() - new Date(r.lastModified).getTime() < RECENT_DAYS * 86400000;
 
+  /** Resolve S.colFilter; collection keys may themselves contain ':' (e.g. "new:abc"). */
+  function parseColFilter() {
+    const f = S.colFilter;
+    if (f === 'any' || f === 'none') return { mode: f };
+    const i = f.indexOf(':');
+    const col = colByKey(f.slice(i + 1));
+    return col && !col.deleted ? { mode: f.slice(0, i), col } : { mode: 'any' };
+  }
+
+  /** Rebuild the collection filter options; drop a selection whose collection is gone. */
+  function renderCollectionFilter() {
+    const sel = $('#collection-filter');
+    if (parseColFilter().mode === 'any') S.colFilter = 'any';
+    const cols = S.working.filter((c) => !c.deleted);
+    const opt = (value, label) => `<option value="${esc(value)}">${esc(label)}</option>`;
+    sel.innerHTML = opt('any', 'Any collection') + opt('none', 'Not in any collection')
+      + (cols.length ? `<optgroup label="Not in…">${cols.map((c) => opt(`not:${c.key}`, `Not in “${c.title}”`)).join('')}</optgroup>`
+        + `<optgroup label="In…">${cols.map((c) => opt(`in:${c.key}`, `In “${c.title}”`)).join('')}</optgroup>` : '');
+    sel.value = S.colFilter;
+    sel.classList.toggle('active', S.colFilter !== 'any');
+  }
+
   function computeVisible() {
     const v = S.view;
     let list = S.repos;
@@ -480,7 +503,13 @@
     else if (v.kind === 'collection') {
       const col = colByKey(v.key);
       const keys = new Set(col ? col.items.filter(isRepoItem).map((it) => repoKey(it.type, it.id)) : []);
-      list = list.filter((r) => keys.has(repoKey(r.type, r.id)));
+      list = list.filter((r) => keys.has(repoKey(r.type, r.id)) !== !!v.invert);
+    }
+    const cf = parseColFilter();
+    if (cf.mode === 'none') list = list.filter((r) => !S.memberOf.has(repoKey(r.type, r.id)));
+    else if (cf.col) {
+      const keys = new Set(cf.col.items.filter(isRepoItem).map((it) => repoKey(it.type, it.id)));
+      list = list.filter((r) => keys.has(repoKey(r.type, r.id)) === (cf.mode === 'in'));
     }
     if (S.type !== 'all') list = list.filter((r) => r.type === S.type);
     if (S.vis !== 'all') list = list.filter((r) => (S.vis === 'private' ? r.private : !r.private));
@@ -604,6 +633,7 @@
       let desc = col.description || '';
       if (other) desc += `${desc ? ' · ' : ''}+${other} item${other === 1 ? '' : 's'} not owned by ${S.owner} (papers, other repos) — preserved, not shown.`;
       if (col.deleted) desc = 'Staged for deletion. Restore it from the ⋯ menu, or undo.';
+      else if (v.invert) return { title: `Not in “${col.title}”`, desc: 'Repositories that are not in this collection yet. Select some, then drag them onto it in the sidebar or use the Add button in the selection bar.', col };
       return { title: col.title, desc, col };
     }
     return {
@@ -674,6 +704,9 @@
     $('#view-title').textContent = meta.title;
     $('#view-desc').textContent = meta.desc || '';
     $('#btn-view-menu').hidden = !meta.col;
+    $('#membership-toggle').hidden = !meta.col || !!meta.col.deleted;
+    $$('#membership-toggle button').forEach((b) => b.setAttribute('aria-checked', String((b.dataset.value === 'out') === !!S.view.invert)));
+    renderCollectionFilter();
     grid.classList.toggle('list', S.layout === 'list');
 
     if (S.loading) {
@@ -699,13 +732,16 @@
     if (!S.visible.length) {
       grid.innerHTML = '';
       state.hidden = false;
-      const filtered = S.q || S.localQ || S.type !== 'all' || S.vis !== 'all';
+      const filtered = S.q || S.localQ || S.type !== 'all' || S.vis !== 'all' || S.colFilter !== 'any';
       if (filtered) {
         state.className = 'state';
         state.innerHTML = `<div class="state-icon">${icon('search-x')}</div><h2>No matching repositories</h2><p>Try a different search or clear the filters.</p><button class="btn" data-act="clear-filters">Clear filters</button>`;
       } else if (S.view.kind === 'uncategorized' && S.repos.length) {
         state.className = 'state success';
         state.innerHTML = `<div class="state-icon">${icon('party-popper')}</div><h2>Everything is organized!</h2><p>All your repositories belong to at least one collection.</p>`;
+      } else if (S.view.kind === 'collection' && S.view.invert && S.repos.length) {
+        state.className = 'state success';
+        state.innerHTML = `<div class="state-icon">${icon('check-circle-2')}</div><h2>Everything is already in “${esc(meta.col?.title || '')}”</h2><p>There are no repositories left to add to this collection.</p>`;
       } else if (S.view.kind === 'collection') {
         state.className = 'state';
         state.innerHTML = `<div class="state-icon">${icon('folder-open')}</div><h2>This collection is empty</h2><p>Drag repositories onto it in the sidebar, or select some and use “Add to Collection”.</p><button class="btn" data-act="go-uncategorized">Browse uncategorized</button>`;
@@ -737,6 +773,15 @@
     $('#bulk-bar').hidden = n === 0;
     $('#bulk-count').textContent = n;
     $('#bulk-remove').hidden = !S.working.some((c) => !c.deleted);
+    const target = invertedTarget();
+    $('#bulk-add span:last-child').textContent = target ? `Add to “${target.title}”` : 'Add to Collection';
+  }
+
+  /** In a collection's "Not in collection" view, the collection that bulk/menu adds go straight to. */
+  function invertedTarget() {
+    if (S.view.kind !== 'collection' || !S.view.invert) return null;
+    const col = colByKey(S.view.key);
+    return col && !col.deleted ? col : null;
   }
 
   // -------------------------------------------------------------------
@@ -1006,12 +1051,14 @@
     const keys = [...S.selection];
     const r = S.repoByKey.get(key);
     const n = keys.length;
-    const inView = S.view.kind === 'collection' ? colByKey(S.view.key) : null;
+    const inView = S.view.kind === 'collection' && !S.view.invert ? colByKey(S.view.key) : null;
+    const target = invertedTarget();
     const items = [];
     if (n > 1) items.push({ header: true, label: `${n} repositories selected` });
     items.push({ icon: 'external-link', label: 'Open on Hugging Face', run: () => openOnHf(r), kbd: 'dbl-click' });
     items.push({ icon: 'info', label: 'Show details', run: () => openDetails(key) });
     items.push('-');
+    if (target) items.push({ icon: 'folder-plus', label: `Add to “${target.title}”`, run: () => addToCollection(keys, target.key) });
     items.push({ icon: 'folder-plus', label: n > 1 ? `Add ${n} to Collection…` : 'Add to Collection…', run: () => pickCollection(keys, 'add') });
     if (inView && !inView.deleted) items.push({ icon: 'folder-minus', label: `Remove from “${inView.title}”`, run: () => removeFromCollection(keys, inView.key) });
     items.push({ icon: 'folder-minus', label: 'Remove from Collection…', disabled: !keys.some((k) => S.memberOf.has(k)), run: () => pickCollection(keys, 'remove') });
@@ -1672,9 +1719,11 @@
     S.working = applyOps(clone(baseline), keep, keyMap);
     if (S.view.kind === 'collection') {
       const mapped = keyMap.get(S.view.key);
-      if (mapped) S.view = { kind: 'collection', key: mapped };
+      if (mapped) S.view = { ...S.view, key: mapped };
       else if (!colByKey(S.view.key)) S.view = { kind: 'all' };
     }
+    const fi = S.colFilter.indexOf(':');
+    if (fi > 0 && keyMap.has(S.colFilter.slice(fi + 1))) S.colFilter = `${S.colFilter.slice(0, fi)}:${keyMap.get(S.colFilter.slice(fi + 1))}`;
     S.undo = [];
     recompute();
     persistDraft();
@@ -1700,6 +1749,14 @@
     $('#global-search').addEventListener('input', debounce((e) => { S.q = e.target.value.trim(); renderMain(); }, 120));
     $('#local-search').addEventListener('input', debounce((e) => { S.localQ = e.target.value.trim(); renderMain(); }, 120));
     $('#visibility-filter').addEventListener('change', (e) => { S.vis = e.target.value; renderMain(); });
+    $('#collection-filter').addEventListener('change', (e) => { S.colFilter = e.target.value; renderMain(); });
+    $('#membership-toggle').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-value]');
+      if (!b || S.view.kind !== 'collection') return;
+      S.view = { ...S.view, invert: b.dataset.value === 'out' };
+      S.selection.clear();
+      renderMain();
+    });
     $('#sort-select').value = S.sort;
     $('#sort-select').addEventListener('change', (e) => { S.sort = e.target.value; savePrefs(); renderMain(); });
     const seg = (id, apply) => $(id).addEventListener('click', (e) => {
@@ -1727,10 +1784,14 @@
     $('#btn-view-menu').addEventListener('click', (e) => { const r = e.currentTarget.getBoundingClientRect(); collectionMenu(r.left, r.bottom + 4, S.view.key); });
 
     // Bulk bar
-    $('#bulk-add').addEventListener('click', () => pickCollection([...S.selection], 'add'));
+    $('#bulk-add').addEventListener('click', () => {
+      const target = invertedTarget();
+      if (target) addToCollection([...S.selection], target.key);
+      else pickCollection([...S.selection], 'add');
+    });
     $('#bulk-remove').addEventListener('click', () => {
       const keys = [...S.selection];
-      const inView = S.view.kind === 'collection' && colByKey(S.view.key);
+      const inView = S.view.kind === 'collection' && !S.view.invert && colByKey(S.view.key);
       if (inView && !inView.deleted) removeFromCollection(keys, inView.key);
       else pickCollection(keys, 'remove');
     });
@@ -1866,7 +1927,7 @@
   }
 
   function clearFilters() {
-    S.q = ''; S.localQ = ''; S.type = 'all'; S.vis = 'all';
+    S.q = ''; S.localQ = ''; S.type = 'all'; S.vis = 'all'; S.colFilter = 'any';
     $('#global-search').value = ''; $('#local-search').value = ''; $('#visibility-filter').value = 'all';
     $$('#type-filter button').forEach((b) => b.setAttribute('aria-checked', b.dataset.value === 'all'));
     renderMain();

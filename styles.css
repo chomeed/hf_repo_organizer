@@ -241,9 +241,12 @@ body.dragging .nav-collection.drop-over .nav-label { color: var(--accent); }
   padding: 18px 24px 12px;
 }
 .toolbar-title { min-width: 0; }
-.title-row { display: flex; align-items: center; gap: 10px; }
+.title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .toolbar h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .count-pill { font-size: 12px; font-weight: 600; color: var(--text-2); background: var(--hover); padding: 2px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.membership-toggle { margin-left: 4px; }
+#collection-filter { max-width: 210px; }
+#collection-filter.active { border-color: var(--accent); color: var(--accent); }
 .view-desc { margin: 4px 0 0; color: var(--text-2); font-size: 13px; max-width: 640px; }
 .view-desc:empty { display: none; }
 .toolbar-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
