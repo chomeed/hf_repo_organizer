@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HF Organizer</title>
+  <meta name="description" content="Organize your Hugging Face repositories into collections with drag-and-drop.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23F97316'/%3E%3Cpath d='M9 11h14M9 16h10M9 21h6' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#repo-grid">Skip to repositories</a>
+
+  <div class="app" id="app">
+    <!-- ================= Top navigation ================= -->
+    <header class="topbar" role="banner">
+      <button class="icon-btn only-narrow" id="btn-drawer" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><span data-icon="menu"></span></button>
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">HF Organizer</span>
+        <span class="mode-pill" id="mode-pill">Demo</span>
+      </div>
+      <div class="user-chip hide-mobile" id="user-chip" title="Repositories owner">
+        <span data-icon="at-sign"></span><span id="owner-name">chomeed</span>
+      </div>
+
+      <div class="global-search">
+        <span class="search-icon" data-icon="search"></span>
+        <input id="global-search" type="search" placeholder="Search repositories…" autocomplete="off" aria-label="Search repositories (press / to focus)">
+        <kbd class="hide-mobile">/</kbd>
+      </div>
+
+      <div class="topbar-actions">
+        <span class="repo-total hide-mobile" id="repo-total" aria-live="polite">0 repos</span>
+        <button class="icon-btn" id="btn-refresh" aria-label="Refresh from Hugging Face" title="Refresh"><span data-icon="refresh-cw"></span></button>
+        <button class="icon-btn" id="btn-theme" aria-label="Toggle dark mode" title="Toggle theme"><span data-icon="moon"></span></button>
+        <button class="btn btn-primary sync-btn" id="btn-sync" title="Review and sync staged changes">
+          <span data-icon="upload-cloud"></span><span class="hide-mobile">Sync</span>
+          <span class="sync-badge" id="sync-badge" hidden>0</span>
+        </button>
+        <button class="avatar-btn" id="btn-avatar" aria-label="Account and connection" aria-haspopup="dialog">
+          <span class="avatar" id="avatar">C</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="mode-banner" id="mode-banner" role="status"></div>
+
+    <div class="body">
+      <!-- ================= Sidebar ================= -->
+      <aside class="sidebar" id="sidebar" aria-label="Collections">
+        <nav>
+          <div class="nav-section-title">Workspace</div>
+          <ul class="nav-list" id="nav-workspace" role="list"></ul>
+
+          <div class="nav-section-title nav-section-row">
+            <span>Collections</span>
+            <button class="icon-btn tiny" id="btn-new-collection-mini" aria-label="New collection" title="New collection"><span data-icon="plus"></span></button>
+          </div>
+          <ul class="nav-list" id="nav-collections" role="list"></ul>
+          <button class="new-collection" id="btn-new-collection"><span data-icon="plus"></span>New Collection</button>
+        </nav>
+        <div class="sidebar-footer" id="sidebar-footer"></div>
+      </aside>
+      <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+
+      <!-- ================= Main ================= -->
+      <main class="main" id="main">
+        <div class="toolbar">
+          <div class="toolbar-title">
+            <div class="title-row">
+              <h1 id="view-title">All Repositories</h1>
+              <span class="count-pill" id="view-count">0</span>
+              <button class="icon-btn tiny" id="btn-view-menu" aria-label="Collection options" title="Collection options" hidden><span data-icon="more-horizontal"></span></button>
+            </div>
+            <p class="view-desc" id="view-desc"></p>
+          </div>
+          <div class="toolbar-controls">
+            <div class="local-search">
+              <span data-icon="filter"></span>
+              <input id="local-search" type="search" placeholder="Filter this view…" aria-label="Filter this view" autocomplete="off">
+            </div>
+            <div class="segmented" role="radiogroup" aria-label="Repository type" id="type-filter">
+              <button role="radio" data-value="all" aria-checked="true">All</button>
+              <button role="radio" data-value="model" aria-checked="false">Models</button>
+              <button role="radio" data-value="dataset" aria-checked="false">Datasets</button>
+              <button role="radio" data-value="space" aria-checked="false">Spaces</button>
+            </div>
+            <select id="visibility-filter" class="select" aria-label="Visibility">
+              <option value="all">All visibility</option>
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+            </select>
+            <select id="sort-select" class="select" aria-label="Sort">
+              <option value="name-asc">Name A–Z</option>
+              <option value="name-desc">Name Z–A</option>
+              <option value="updated-desc">Recently updated</option>
+              <option value="updated-asc">Oldest updated</option>
+              <option value="downloads-desc">Most downloads</option>
+              <option value="likes-desc">Most likes</option>
+            </select>
+            <div class="segmented icon-seg" role="radiogroup" aria-label="Layout" id="layout-toggle">
+              <button role="radio" data-value="grid" aria-checked="true" aria-label="Grid view" title="Grid view"><span data-icon="layout-grid"></span></button>
+              <button role="radio" data-value="list" aria-checked="false" aria-label="List view" title="List view"><span data-icon="list"></span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="select-hint" id="select-hint">
+          <button class="link-btn" id="btn-select-all">Select all visible</button>
+          <span class="muted hide-mobile">· Click to select · ⌘/Ctrl-click to add · Shift-click for a range · Drag onto a collection · Double-click to open</span>
+        </div>
+
+        <section class="repo-area" aria-label="Repositories">
+          <div id="repo-grid" class="repo-grid" tabindex="-1" role="listbox" aria-multiselectable="true" aria-label="Repositories"></div>
+          <div id="repo-state" class="state" hidden></div>
+        </section>
+      </main>
+
+      <!-- ================= Details panel ================= -->
+      <aside class="details" id="details" aria-label="Repository details" hidden></aside>
+    </div>
+
+    <!-- ================= Bulk action bar ================= -->
+    <div class="bulk-bar" id="bulk-bar" role="toolbar" aria-label="Bulk actions" hidden>
+      <span class="bulk-count"><strong id="bulk-count">0</strong> selected</span>
+      <button class="bulk-action" id="bulk-add"><span data-icon="folder-plus"></span><span>Add to Collection</span></button>
+      <button class="bulk-action" id="bulk-remove"><span data-icon="folder-minus"></span><span>Remove from Collection</span></button>
+      <button class="bulk-action" id="bulk-select-all"><span data-icon="check-square"></span><span class="hide-mobile">Select all</span></button>
+      <button class="bulk-action subtle" id="bulk-clear"><span data-icon="x"></span><span>Clear</span></button>
+    </div>
+  </div>
+
+  <div id="modal-root"></div>
+  <div class="context-menu" id="context-menu" role="menu" hidden></div>
+  <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
+  <div class="drag-ghost" id="drag-ghost" aria-hidden="true"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

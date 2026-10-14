@@ -1,0 +1,20 @@
+{
+  "name": "hf-organizer",
+  "version": "1.0.0",
+  "description": "Organize Hugging Face repositories into real Hugging Face Collections with drag-and-drop.",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "lucide": "0.460.0",
+    "sortablejs": "1.15.6"
+  },
+  "license": "MIT"
+}
